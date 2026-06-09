@@ -1,68 +1,41 @@
-import json
-import requests
+from http.server import BaseHTTPRequestHandler
+import json, requests
 
 BOT_TOKEN = "8858772185:AAGRTCwpkqzMdnqfBZhdch3wAUPWmeEnT8Y"
-TG_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 def send_message(chat_id, text):
-    url = f"{TG_API}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "Markdown"
-    }
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     try:
-        requests.post(url, json=payload, timeout=5)
-    except Exception as e:
-        print("Send error:", e)
+        requests.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"})
+    except: pass
 
-def translate_text(text, target_lang='ru'):
-    # Прямой запрос к Google Translate (без сторонних библиотек)
+def translate_text(text):
     try:
-        url = "https://translate.googleapis.com/translate_a/single"
-        params = {
-            'client': 'gtx',
-            'sl': 'auto',
-            'tl': target_lang,
-            'dt': 't',
-            'q': text
-        }
-        resp = requests.get(url, params=params, timeout=5)
-        if resp.status_code == 200:
-            result = resp.json()
-            # извлекаем перевод
-            translated = ''.join(part[0] for part in result[0] if part[0])
-            return translated
-        else:
-            return f"Ошибка перевода (код {resp.status_code})"
+        r = requests.get("https://translate.googleapis.com/translate_a/single",
+                         params={'client':'gtx','sl':'auto','tl':'ru','dt':'t','q':text}, timeout=5)
+        if r.status_code == 200:
+            return ''.join(part[0] for part in r.json()[0] if part[0])
+        return "Ошибка перевода"
     except Exception as e:
-        return f"Ошибка: {str(e)[:100]}"
+        return f"Ошибка: {e}"
 
-def handler(request, response):
-    """Точка входа для Vercel"""
-    # Обрабатываем только POST-запросы от Telegram
-    if request.method == 'POST':
-        try:
-            update = json.loads(request.body)
-        except Exception as e:
-            response.status_code = 400
-            return response
-
-        if 'message' in update:
-            msg = update['message']
-            chat_id = msg['chat']['id']
-            text = msg.get('text', '')
-
+class handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        length = int(self.headers.get('Content-Length', 0))
+        data = json.loads(self.rfile.read(length))
+        if 'message' in data:
+            chat = data['message']['chat']['id']
+            text = data['message'].get('text', '')
             if text == '/start':
-                send_message(chat_id, "✍️ *Привет!*\nОтправь мне текст на любом языке, я переведу его на русский.")
+                send_message(chat, "✍️ Отправьте текст для перевода на русский")
             else:
-                translated = translate_text(text)
-                send_message(chat_id, f"📝 *Перевод:*\n{translated}")
+                result = translate_text(text)
+                send_message(chat, f"📝 Перевод:\n{result}")
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'OK')
 
-        response.status_code = 200
-        return response
-
-    # GET-запрос для проверки работы
-    response.status_code = 200
-    response.body = "Bot is running"
-    return response
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'Bot is running')
