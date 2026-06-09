@@ -1,6 +1,0 @@
-[project]
-name = "telegram-translator-bot"
-version = "0.1.0"
-
-[tool.vercel]
-entrypoint = "api/webhook.py:app"
